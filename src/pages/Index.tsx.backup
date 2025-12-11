@@ -1,0 +1,999 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Plus, RotateCcw, Trash2, Edit, Upload, Download, Sun, Moon, Settings, Circle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { Toaster } from '@/components/ui/toaster';
+
+interface FlashCard {
+  id: string;
+  front: string;
+  back: string;
+  category: string;
+  isFlipped: boolean;
+}
+
+interface Category {
+  id: string;
+  name: string;
+  color: string;
+}
+
+const Index = () => {
+  const [cards, setCards] = useState<FlashCard[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [isMobile, setIsMobile] = useState(false);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [newCardFront, setNewCardFront] = useState('');
+  const [newCardBack, setNewCardBack] = useState('');
+  const [studyMode, setStudyMode] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isCardListDialogOpen, setIsCardListDialogOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCardCategory, setNewCardCategory] = useState('none');
+  const [editingCard, setEditingCard] = useState<FlashCard | null>(null);
+  const [editCardFront, setEditCardFront] = useState('');
+  const [editCardBack, setEditCardBack] = useState('');
+  const [editCardCategory, setEditCardCategory] = useState('none');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  // 로컬 스토리지에서 데이터 불러오기
+  useEffect(() => {
+    const savedCards = localStorage.getItem('flashcards');
+    const savedCategories = localStorage.getItem('categories');
+    
+    if (savedCards) {
+      const parsedCards = JSON.parse(savedCards);
+      // 기존 카드에 category 필드 추가 (없는 경우)
+      const updatedCards = parsedCards.map((card: any) => ({
+        ...card,
+        category: card.category || 'none'
+      }));
+      setCards(updatedCards);
+    }
+    
+    if (savedCategories) {
+      setCategories(JSON.parse(savedCategories));
+    } else {
+      // MDEET 기본 카테고리 설정
+      const defaultCategories: Category[] = [
+        { id: 'mdeet', name: 'MDEET', color: 'circle' }
+      ];
+      setCategories(defaultCategories);
+      
+      // MDEET 데이터 로드
+      loadMDEETData();
+    }
+    
+    // 테마 초기화
+    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
+    if (savedTheme) {
+      setTheme(savedTheme);
+    } else {
+      // 시스템 설정에 따라 기본 테마 설정
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      setTheme(prefersDark ? 'dark' : 'light');
+    }
+    
+    // 모바일 감지
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => {
+      window.removeEventListener('resize', checkMobile);
+    };
+  }, []);
+
+  // 테마 적용
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  // 데이터 변경시 로컬 스토리지에 저장
+  useEffect(() => {
+    localStorage.setItem('flashcards', JSON.stringify(cards));
+  }, [cards]);
+  
+  useEffect(() => {
+    localStorage.setItem('categories', JSON.stringify(categories));
+  }, [categories]);
+
+  // 테마 변경 함수
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
+
+  // MDEET 데이터 로드 함수
+  const loadMDEETData = () => {
+    const mdeetData = [
+      {
+        front: '진핵생물의 뉴클레오솜을 구성하는 히스톤 단백질에는 어떤 전하를 띠 아미노산이 풍부하며, 그 이유는 무엇인가?',
+        back: '양전하성 아미노산(리신, 아르기닌)이 풍부하며, 이는 음전하를 띠 DNA의 인산 골격과 강하게 결합하기 위함이다.'
+      },
+      {
+        front: '항체의 작용 기작 중, 바이러스나 독소에 결합하여 세포 감염이나 독성을 직접적으로 무력화시키는 작용을 무엇이라고 하는가?',
+        back: '중화 작용 (neutralization)'
+      },
+      {
+        front: '항체가 병원체 표면에 결합하여 식세포의 포식작용을 촉진하는 현상을 무엇이라고 하는가?',
+        back: '옵소닌화 작용 (opsonization)'
+      },
+      {
+        front: '음식 섭취 후 혈당이 높아질 때 취장의 베타세포에서 분비되어 혈당을 낮추는 호르몬은 무엇인가?',
+        back: '인슐린 (Insulin)'
+      },
+      {
+        front: '공복 상태에서 혈당이 낮아질 때 취장의 알파세포에서 분비되어 혈당을 높이는 호르몬은 무엇인가?',
+        back: '글루카곤 (Glucagon)'
+      },
+      {
+        front: '개구리 낭배 형성 시기 배아에서 척삭으로 발생할 운명을 지닌 부위는 어디인가?',
+        back: '원구 상순부 (dorsal lip of the blastopore)'
+      },
+      {
+        front: '세균의 전사 조절 기작에서, _____은(는) 전사를 방해하는 단백질이고, _____은(는) 전사를 촉진하는 단백질이다.',
+        back: '억제인자(repressor), 활성인자(activator)'
+      },
+      {
+        front: '트립토판 오페론에서 트립토판은 _____으로 작용하여 억제인자와 결합하고 전사를 억제한다.',
+        back: '보조억제물질 (corepressor)'
+      },
+      {
+        front: '진핵세포에서 RNA 중합효소 II (RNAP II)의 C-말단 영역(CTD)의 Ser5가 인산화되면 어떤 인자가 결합하여 mRNA의 5\' 말단 변형을 유도하는가?',
+        back: '캐형성(5\'-capping) 효소'
+      },
+      {
+        front: '진핵세포에서 분비 단백질이 합성되어 세포 밖으로 분비될 때 거치는 세포 소기관의 일반적인 경로는 무엇인가?',
+        back: '조면소포체 → 골지체 → 분비 소낭 → 세포막'
+      }
+    ];
+    
+    const mdeetCards: FlashCard[] = mdeetData.map((item, index) => ({
+      id: `mdeet-${Date.now()}-${index}`,
+      front: item.front,
+      back: item.back,
+      category: 'mdeet',
+      isFlipped: false
+    }));
+    
+    setCards(mdeetCards);
+    
+    // 전체 79개 문제 로드 및 중복 제거
+    fetch('/mdeet_data_utf8.csv')
+      .then(response => response.text())
+      .then(text => {
+        const lines = text.split('\n').filter(line => line.trim());
+        const mdeetCards: FlashCard[] = [];
+        const seenQuestions = new Set(); // 중복 제거용
+        
+        lines.forEach((line, index) => {
+          // CSV 파싱 (쉼표로 구분, 따옴표 처리)
+          const match = line.match(/^"([^"]*)","?([^"]*)"?$/) || line.match(/^([^,]*),(.*)$/);
+          if (match && match[1] && match[2]) {
+            const question = match[1].replace(/""/g, '"').trim();
+            const answer = match[2].replace(/""/g, '"').trim();
+            
+            // 중복 체크
+            if (!seenQuestions.has(question) && question && answer) {
+              seenQuestions.add(question);
+              mdeetCards.push({
+                id: `mdeet-${Date.now()}-${index}`,
+                front: question,
+                back: answer,
+                category: 'mdeet',
+                isFlipped: false
+              });
+            }
+          }
+        });
+        
+        if (mdeetCards.length > 0) {
+          setCards(mdeetCards);
+          toast({
+            title: 'MDEET 데이터 로드 성공',
+            description: `${mdeetCards.length}개의 MDEET 문제가 로드되었습니다. (중복 제거됨)`,
+          });
+        }
+      })
+      .catch(error => {
+        console.error('MDEET 데이터 로드 오류:', error);
+        toast({
+          title: 'MDEET 데이터 로드 실패',
+          description: '데이터를 로드할 수 없습니다.',
+          variant: 'destructive',
+        });
+      });
+  };
+
+  // CSV 파싱 함수 (한글 지원)
+  const parseCSV = (text: string): string[][] => {
+    const lines = text.split('\n');
+    const result: string[][] = [];
+    
+    for (const line of lines) {
+      if (line.trim()) {
+        // 개선된 CSV 파싱 (쉼표로 구분, 따옴표 처리)
+        const columns = [];
+        let current = '';
+        let inQuotes = false;
+        
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            columns.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        columns.push(current.trim());
+        
+        if (columns.length >= 2 && columns[0] && columns[1]) {
+          result.push(columns);
+        }
+      }
+    }
+    return result;
+  };
+
+  // XLSX 파일 처리 함수 (간단한 방법)
+  const parseXLSX = async (file: File): Promise<string[][]> => {
+    // XLSX 파일은 복잡하므로 CSV로 변환 안내
+    toast({
+      title: "XLSX 파일 안내",
+      description: "XLSX 파일은 CSV로 저장 후 업로드해주세요. 엑셀에서 '다른 이름으로 저장' > 'CSV UTF-8(쉼표로 구분)' 선택",
+      variant: "destructive",
+    });
+    return [];
+  };
+
+  // 엑셀/CSV 파일 가져오기
+  const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.name.endsWith('.xlsx')) {
+      // XLSX 파일은 CSV로 변환 안내
+      parseXLSX(file);
+      return;
+    } else {
+      // CSV/텍스트 파일 처리 - 인코딩 자동 감지
+      const reader = new FileReader();
+      
+      // 먼저 UTF-8로 시도
+      reader.onload = (e) => {
+        try {
+          const text = e.target?.result as string;
+          
+          // 한글이 깨졌는지 확인 (유니코드 대체 문자 감지)
+          if (text.includes('�') || text.includes('?')) {
+            // UTF-8로 읽기 실패, EUC-KR로 재시도
+            const readerEUCKR = new FileReader();
+            readerEUCKR.onload = (e2) => {
+              try {
+                const textEUCKR = e2.target?.result as string;
+                processTextFile(textEUCKR, file.name);
+              } catch (error) {
+                // EUC-KR도 실패하면 원본 UTF-8 텍스트 사용
+                processTextFile(text, file.name);
+              }
+            };
+            readerEUCKR.readAsText(file, 'EUC-KR');
+          } else {
+            // UTF-8로 정상 읽기 성공
+            processTextFile(text, file.name);
+          }
+        } catch (error) {
+          toast({
+            title: "파일 읽기 오류",
+            description: "파일을 읽는 중 오류가 발생했습니다.",
+            variant: "destructive",
+          });
+        }
+      };
+      reader.readAsText(file, 'UTF-8');
+    }
+    setIsImportDialogOpen(false);
+  };
+
+  // 텍스트 파일 처리 함수
+  const processTextFile = (text: string, fileName: string) => {
+    let data: string[][];
+
+    if (fileName.endsWith('.csv')) {
+      data = parseCSV(text);
+    } else {
+      // 탭으로 구분된 텍스트로 처리 (엑셀에서 복사한 경우)
+      data = text.split('\n')
+        .filter(line => line.trim())
+        .map(line => line.split('\t').map(col => col.trim()));
+    }
+    
+    processImportedData(data);
+  };
+
+  // 가져온 데이터 처리 함수 (선택된 카테고리로 설정)
+  const processImportedData = (data: string[][]) => {
+    const newCards: FlashCard[] = [];
+    const targetCategory = selectedCategory === 'all' ? 'none' : selectedCategory;
+    
+    data.forEach((row, index) => {
+      if (row.length >= 2 && row[0] && row[1]) {
+        newCards.push({
+          id: `${Date.now()}-${index}`,
+          front: row[0],
+          back: row[1],
+          category: targetCategory,
+          isFlipped: false
+        });
+      }
+    });
+
+    if (newCards.length > 0) {
+      setCards(prevCards => [...prevCards, ...newCards]);
+      toast({
+        title: "가져오기 성공",
+        description: `${newCards.length}개의 카드를 추가했습니다.`,
+      });
+    } else {
+      toast({
+        title: "가져오기 실패",
+        description: "올바른 형식의 데이터를 찾을 수 없습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // 엑셀 파일로 내보내기
+  const exportToCSV = () => {
+    if (cards.length === 0) {
+      toast({
+        title: "내보낼 데이터 없음",
+        description: "내보낼 카드가 없습니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const csvContent = cards.map(card => `"${card.front}","${card.back}"`).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', '플립카드_데이터.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast({
+      title: "내보내기 성공",
+      description: "CSV 파일로 다운로드되었습니다.",
+    });
+  };
+
+  // 카테고리 관리 함수들
+  const addCategory = () => {
+    if (newCategoryName.trim()) {
+      // 블랙&화이트 테마에 맞는 아이콘 사용
+      const newCategory: Category = {
+        id: Date.now().toString(),
+        name: newCategoryName.trim(),
+        color: 'circle' // 블랙&화이트 테마에 맞는 아이콘
+      };
+      setCategories([...categories, newCategory]);
+      setNewCategoryName('');
+      setIsCategoryDialogOpen(false);
+      toast({
+        title: "카테고리 추가",
+        description: `"${newCategory.name}" 카테고리가 추가되었습니다.`,
+      });
+    }
+  };
+
+  const deleteCategory = (categoryId: string) => {
+    // 해당 카테고리의 카드들을 '없음'으로 변경
+    const updatedCards = cards.map(card => 
+      card.category === categoryId ? { ...card, category: 'none' } : card
+    );
+    setCards(updatedCards);
+    
+    // 카테고리 삭제
+    setCategories(categories.filter(cat => cat.id !== categoryId));
+    
+    // 선택된 카테고리가 삭제된 카테고리면 전체로 변경
+    if (selectedCategory === categoryId) {
+      setSelectedCategory('all');
+    }
+    
+    toast({
+      title: "카테고리 삭제",
+      description: "카테고리가 삭제되고 해당 카드들이 '없음'으로 이동되었습니다.",
+    });
+  };
+
+  // 카드 관리 함수들
+  const addCard = () => {
+    if (newCardFront.trim() && newCardBack.trim()) {
+      const newCard: FlashCard = {
+        id: Date.now().toString(),
+        front: newCardFront.trim(),
+        back: newCardBack.trim(),
+        category: newCardCategory,
+        isFlipped: false
+      };
+      setCards([...cards, newCard]);
+      setNewCardFront('');
+      setNewCardBack('');
+      setNewCardCategory('none');
+      setIsAddDialogOpen(false);
+      toast({
+        title: "카드 추가",
+        description: "새 플래시카드가 추가되었습니다.",
+      });
+    }
+  };
+
+  const editCard = () => {
+    if (editingCard && editCardFront.trim() && editCardBack.trim()) {
+      const updatedCards = cards.map(card => 
+        card.id === editingCard.id 
+          ? { ...card, front: editCardFront.trim(), back: editCardBack.trim(), category: editCardCategory }
+          : card
+      );
+      setCards(updatedCards);
+      setEditingCard(null);
+      setEditCardFront('');
+      setEditCardBack('');
+      setEditCardCategory('none');
+      setIsEditDialogOpen(false);
+      toast({
+        title: "카드 수정",
+        description: "플래시카드가 수정되었습니다.",
+      });
+    }
+  };
+
+  const startEditCard = (card: FlashCard) => {
+    setEditingCard(card);
+    setEditCardFront(card.front);
+    setEditCardBack(card.back);
+    setEditCardCategory(card.category);
+    setIsEditDialogOpen(true);
+  };
+
+  const deleteCard = (id: string) => {
+    setCards(cards.filter(card => card.id !== id));
+    if (currentCardIndex >= cards.length - 1) {
+      setCurrentCardIndex(Math.max(0, cards.length - 2));
+    }
+    toast({
+      title: "카드 삭제",
+      description: "플래시카드가 삭제되었습니다.",
+    });
+  };
+
+  // 필터링된 카드 목록
+  const filteredCards = selectedCategory === 'all' 
+    ? cards 
+    : cards.filter(card => card.category === selectedCategory);
+
+  const flipCard = (index: number) => {
+    const updatedCards = [...cards];
+    updatedCards[index].isFlipped = !updatedCards[index].isFlipped;
+    setCards(updatedCards);
+  };
+
+  const nextCard = () => {
+    if (currentCardIndex < filteredCards.length - 1) {
+      setCurrentCardIndex(currentCardIndex + 1);
+    }
+  };
+
+  const prevCard = () => {
+    if (currentCardIndex > 0) {
+      setCurrentCardIndex(currentCardIndex - 1);
+    }
+  };
+
+  const resetAllCards = () => {
+    const resetCards = cards.map(card => ({ ...card, isFlipped: false }));
+    setCards(resetCards);
+  };
+
+  if (studyMode && filteredCards.length > 0) {
+    const currentCard = filteredCards[currentCardIndex];
+    return (
+      <div className="min-h-screen app-bg p-4">
+        <div className={`${isMobile ? 'max-w-sm' : 'max-w-2xl'} mx-auto`}>
+          <div className="flex justify-between items-center mb-6">
+            <Button 
+              variant="outline" 
+              onClick={() => setStudyMode(false)}
+              className={`${isMobile ? 'mobile-button' : ''} bg-[hsl(var(--button-secondary))] text-[hsl(var(--button-secondary-text))] border-[hsl(var(--border-color))] hover:opacity-80`}
+            >
+              ← 목록으로
+            </Button>
+            <span className={`text-[hsl(var(--text-primary))] font-medium ${isMobile ? 'text-base' : 'text-lg'}`}>
+              {currentCardIndex + 1} / {filteredCards.length}
+            </span>
+          </div>
+
+          <Card 
+            className={`${isMobile ? 'mobile-card' : 'h-96'} cursor-pointer flashcard mb-6 ${
+              currentCard.isFlipped ? 'flashcard-back' : 'flashcard-front'
+            }`}
+            onClick={() => flipCard(currentCardIndex)}
+          >
+            <CardContent className={`h-full flex items-center justify-center ${isMobile ? 'p-6' : 'p-8'}`}>
+              <div className="text-center">
+                <div className={`${isMobile ? 'mobile-text' : 'text-2xl'} font-semibold mb-6 leading-relaxed text-[hsl(var(${currentCard.isFlipped ? '--card-back-text' : '--card-front-text'}))]`}>
+                  {currentCard.isFlipped ? currentCard.back : currentCard.front}
+                </div>
+                <div className={`text-sm font-medium text-[hsl(var(--text-secondary))]`}>
+                  탭하여 {currentCard.isFlipped ? '앞면' : '뒷면'} 보기
+                </div>
+                <div className={`text-xs mt-2 px-3 py-1 rounded-full inline-block bg-[hsl(var(--button-secondary))] text-[hsl(var(--button-secondary-text))]`}>
+                  {currentCard.isFlipped ? '답' : '질문'}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className={`flex justify-between ${isMobile ? 'gap-4' : 'gap-6'}`}>
+            <Button 
+              variant="outline" 
+              onClick={prevCard}
+              disabled={currentCardIndex === 0}
+              className={`flex-1 ${isMobile ? 'mobile-button' : 'py-3'} bg-[hsl(var(--button-secondary))] text-[hsl(var(--button-secondary-text))] border-[hsl(var(--border-color))] hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              ← 이전
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={nextCard}
+              disabled={currentCardIndex === filteredCards.length - 1}
+              className={`flex-1 ${isMobile ? 'mobile-button' : 'py-3'} bg-[hsl(var(--button-secondary))] text-[hsl(var(--button-secondary-text))] border-[hsl(var(--border-color))] hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              다음 →
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen app-bg">
+      <div className={`${isMobile ? 'max-w-sm px-4 py-6' : 'max-w-4xl p-4'} mx-auto min-h-screen flex flex-col`}>
+        {/* 헤더 */}
+        <div className="text-center mb-6">
+          <div className="flex justify-between items-start mb-4">
+            <h1 className={`${isMobile ? 'text-base leading-tight flex-1 mr-2' : 'text-3xl'} font-bold text-[hsl(var(--text-primary))] tracking-tight`}>MDEET 기출 중요 개념 암기카드</h1>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleTheme}
+              className="bg-[hsl(var(--button-secondary))] text-[hsl(var(--button-secondary-text))] border-[hsl(var(--border-color))] hover:opacity-80"
+            >
+              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+            </Button>
+          </div>
+        </div>
+
+        {/* 모바일 빠른 학습 시작 */}
+        {isMobile && filteredCards.length > 0 && (
+          <div className="text-center mb-6">
+            <Button 
+              onClick={() => setStudyMode(true)}
+              className="bg-[hsl(var(--button-primary))] text-[hsl(var(--button-primary-text))] hover:opacity-90 px-8 py-3 rounded-full font-semibold text-lg"
+            >
+              학습 시작하기
+            </Button>
+          </div>
+        )}
+        
+        {/* 카테고리 선택 - 비노출 */}
+        <div className="hidden">
+            <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="flex items-center gap-1 bg-[hsl(var(--button-secondary))] text-[hsl(var(--button-secondary-text))] border-[hsl(var(--border-color))] hover:opacity-80">
+                  <Plus size={14} />
+                  카테고리 추가
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>카테고리 관리</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium">새 카테고리 이름</label>
+                    <Input
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      placeholder="카테고리 이름을 입력하세요"
+                    />
+                  </div>
+                  <Button onClick={addCategory} className="w-full">
+                    추가하기
+                  </Button>
+                  
+                  <div className="border-t pt-4">
+                    <h4 className="text-sm font-medium mb-2">기존 카테고리</h4>
+                    <div className="space-y-2">
+                      {categories.map((category) => (
+                        <div key={category.id} className="flex items-center justify-between p-2 border rounded">
+                          <div className="flex items-center gap-2">
+                            <Circle size={12} className="category-icon" fill="currentColor" />
+                            <span>{category.name}</span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteCategory(category.id)}
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+          
+          <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-3'}`}>
+            <Button
+              variant={selectedCategory === 'all' ? 'default' : 'secondary'}
+              size="sm"
+              onClick={() => setSelectedCategory('all')}
+              className={`${isMobile ? 'px-3 py-1 text-sm' : 'px-4 py-2'} rounded-full font-medium transition-all ${
+                selectedCategory === 'all' 
+                  ? 'bg-[hsl(var(--button-primary))] text-[hsl(var(--button-primary-text))] shadow-lg' 
+                  : 'bg-[hsl(var(--button-secondary))] text-[hsl(var(--button-secondary-text))] border-[hsl(var(--border-color))] hover:opacity-80'
+              }`}
+            >
+              전체 ({cards.length})
+            </Button>
+            <Button
+              variant={selectedCategory === 'none' ? 'default' : 'secondary'}
+              size="sm"
+              onClick={() => setSelectedCategory('none')}
+              className={`${isMobile ? 'px-3 py-1 text-sm' : 'px-4 py-2'} rounded-full font-medium transition-all ${
+                selectedCategory === 'none' 
+                  ? 'bg-[hsl(var(--button-primary))] text-[hsl(var(--button-primary-text))] shadow-lg' 
+                  : 'bg-[hsl(var(--button-secondary))] text-[hsl(var(--button-secondary-text))] border-[hsl(var(--border-color))] hover:opacity-80'
+              }`}
+            >
+              없음 ({cards.filter(c => c.category === 'none').length})
+            </Button>
+            {categories.map((category) => (
+              <Button
+                key={category.id}
+                variant={selectedCategory === category.id ? 'default' : 'secondary'}
+                size="sm"
+                onClick={() => setSelectedCategory(category.id)}
+                className={`flex items-center gap-2 ${isMobile ? 'px-3 py-1 text-sm' : 'px-4 py-2'} rounded-full font-medium transition-all ${
+                  selectedCategory === category.id 
+                    ? 'bg-[hsl(var(--button-primary))] text-[hsl(var(--button-primary-text))] shadow-lg' 
+                    : 'bg-[hsl(var(--button-secondary))] text-[hsl(var(--button-secondary-text))] border-[hsl(var(--border-color))] hover:opacity-80'
+                }`}
+              >
+                <Circle 
+                  size={isMobile ? 12 : 14} 
+                  className="category-icon"
+                  fill="currentColor"
+                />
+                {category.name} ({cards.filter(c => c.category === category.id).length})
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex justify-between items-center mb-8">
+          <div className="flex gap-3">
+            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="flex items-center gap-2 bg-white text-gray-900 hover:bg-gray-100 shadow-lg px-6 py-3 rounded-full font-medium">
+                  <Plus size={18} />
+                  카드 추가
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>새 플래시카드 추가</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium">앞면 (질문)</label>
+                    <Input
+                      value={newCardFront}
+                      onChange={(e) => setNewCardFront(e.target.value)}
+                      placeholder="질문을 입력하세요"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">뒷면 (답)</label>
+                    <Textarea
+                      value={newCardBack}
+                      onChange={(e) => setNewCardBack(e.target.value)}
+                      placeholder="답을 입력하세요"
+                      rows={3}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">카테고리</label>
+                    <select 
+                      value={newCardCategory} 
+                      onChange={(e) => setNewCardCategory(e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded"
+                    >
+                      <option value="none">없음</option>
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button onClick={addCard} className="w-full">
+                    추가하기
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+            
+            <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="flex items-center gap-2 bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700 px-6 py-3 rounded-full font-medium">
+                  <Upload size={18} />
+                  엑셀 가져오기
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>엑셀/CSV 파일 가져오기</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="text-sm text-gray-600">
+                    <p className="mb-2">지원 형식:</p>
+                    <ul className="list-disc list-inside space-y-1">
+                      <li>CSV 파일 (.csv) - 추천!</li>
+                      <li>엑셀에서 복사한 텍스트 (.txt)</li>
+                    </ul>
+                    <div className="mt-3 p-3 bg-blue-50 rounded border">
+                      <p className="text-xs font-medium text-blue-800 mb-1">한글 깨짐 방지 방법:</p>
+                      <p className="text-xs text-blue-700">
+                        엑셀에서 '다른 이름으로 저장' → 'CSV UTF-8(쉼표로 구분)' 선택
+                      </p>
+                    </div>
+                    <p className="mt-3 text-xs text-gray-500">
+                      첫 번째 열: 질문(앞면), 두 번째 열: 답(뒷면)
+                    </p>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,.txt"
+                    onChange={handleFileImport}
+                    className="w-full p-2 border border-gray-300 rounded"
+                  />
+                </div>
+              </DialogContent>
+            </Dialog>
+            
+            {cards.length > 0 && (
+              <Button 
+                variant="outline" 
+                onClick={exportToCSV}
+                className="flex items-center gap-2 bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700 px-4 py-2 rounded-full font-medium"
+              >
+                <Download size={16} />
+                CSV 내보내기
+              </Button>
+            )}
+            
+            {cards.length > 0 && (
+              <Button 
+                variant="outline" 
+                onClick={resetAllCards}
+                className="flex items-center gap-2 bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700 px-4 py-2 rounded-full font-medium"
+              >
+                <RotateCcw size={16} />
+                초기화
+              </Button>
+            )}
+            
+            {filteredCards.length > 0 && (
+              <Button 
+                variant="outline"
+                onClick={() => setIsCardListDialogOpen(true)}
+                className="flex items-center gap-2 bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700 px-4 py-2 rounded-full font-medium"
+              >
+                <Edit size={16} />
+                카드 관리
+              </Button>
+            )}
+          </div>
+
+          {filteredCards.length > 0 && (
+            <Button 
+              onClick={() => setStudyMode(true)}
+              className="bg-white text-gray-900 hover:bg-gray-100 shadow-lg px-8 py-3 rounded-full font-semibold text-lg"
+            >
+              학습 시작
+            </Button>
+          )}
+        </div>
+
+        {/* 메인 콘텐츠 영역 - 전체 높이 채우기 */}
+        <div className="flex-1 flex items-center justify-center">
+        {filteredCards.length === 0 ? (
+          <div className={`text-center ${isMobile ? 'py-8' : 'py-16'}`}>
+            <div className="text-[hsl(var(--text-secondary))] mb-6">
+              <Plus size={isMobile ? 48 : 64} className="mx-auto mb-6 opacity-60" />
+              {cards.length === 0 ? (
+                <>
+                  <p className={`${isMobile ? 'text-lg' : 'text-xl'} text-[hsl(var(--text-primary))] mb-2`}>아직 플래시카드가 없습니다.</p>
+                  <p className="text-[hsl(var(--text-secondary))]">첫 번째 카드를 추가해보세요!</p>
+                </>
+              ) : (
+                <>
+                  <p className={`${isMobile ? 'text-lg' : 'text-xl'} text-[hsl(var(--text-primary))] mb-2`}>선택한 카테고리에 카드가 없습니다.</p>
+                  <p className="text-[hsl(var(--text-secondary))]">다른 카테고리를 선택하거나 새 카드를 추가해보세요!</p>
+                </>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className={`text-center ${isMobile ? 'py-8' : 'py-16'}`}>
+            <div className={`bg-[hsl(var(--bg-secondary))] rounded-2xl shadow-2xl ${isMobile ? 'p-6' : 'p-8'} max-w-lg mx-auto border border-[hsl(var(--border-color))]`}>
+              <h3 className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold text-[hsl(var(--text-primary))] mb-4`}>학습 준비 완료!</h3>
+              <p className={`text-[hsl(var(--text-secondary))] mb-6 ${isMobile ? 'text-base' : 'text-lg'}`}>
+                {selectedCategory === 'all' 
+                  ? `총 ${cards.length}개의 카드가 준비되었습니다.`
+                  : `선택된 카테고리에 ${filteredCards.length}개의 카드가 있습니다.`
+                }
+              </p>
+              <Button 
+                onClick={() => setStudyMode(true)}
+                className={`w-full bg-[hsl(var(--button-primary))] text-[hsl(var(--button-primary-text))] hover:opacity-90 shadow-lg ${isMobile ? 'text-lg py-3' : 'text-xl py-4'} rounded-full font-bold`}
+              >
+                학습 시작하기
+              </Button>
+            </div>
+          </div>
+        )}
+        </div>
+        
+        {/* 카드 수정 다이얼로그 */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>플래시카드 수정</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">앞면 (질문)</label>
+                <Input
+                  value={editCardFront}
+                  onChange={(e) => setEditCardFront(e.target.value)}
+                  placeholder="질문을 입력하세요"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">뒷면 (답)</label>
+                <Textarea
+                  value={editCardBack}
+                  onChange={(e) => setEditCardBack(e.target.value)}
+                  placeholder="답을 입력하세요"
+                  rows={3}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">카테고리</label>
+                <select 
+                  value={editCardCategory} 
+                  onChange={(e) => setEditCardCategory(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded"
+                >
+                  <option value="none">없음</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button onClick={editCard} className="w-full">
+                수정하기
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+        
+        {/* 카드 목록 다이얼로그 */}
+        <Dialog open={isCardListDialogOpen} onOpenChange={setIsCardListDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>카드 목록 관리</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {filteredCards.map((card) => {
+                const category = categories.find(c => c.id === card.category);
+                return (
+                  <div key={card.id} className="border rounded p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          {category && (
+                            <div className="flex items-center gap-1">
+                              <div 
+                                className="w-3 h-3 rounded" 
+                                style={{ backgroundColor: category.color }}
+                              />
+                              <span className="text-xs text-gray-500">{category.name}</span>
+                            </div>
+                          )}
+                          {card.category === 'none' && (
+                            <span className="text-xs text-gray-500">없음</span>
+                          )}
+                        </div>
+                        <div className="mb-2">
+                          <div className="text-sm font-medium text-gray-700">질문:</div>
+                          <div className="text-sm">{card.front}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-gray-700">답:</div>
+                          <div className="text-sm">{card.back}</div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 ml-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => startEditCard(card)}
+                        >
+                          <Edit size={14} />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => deleteCard(card.id)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </DialogContent>
+        </Dialog>
+        <Toaster />
+      </div>
+    </div>
+  );
+};
+
+export default Index;
